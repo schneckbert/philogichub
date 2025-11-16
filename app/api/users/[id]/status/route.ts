@@ -4,12 +4,15 @@ import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { session, error } = await requirePermission('user:write:all');
   if (error) return error;
 
   try {
+    // Await params in Next.js 15+
+    const { id } = await params;
+    
     const { status } = await req.json();
 
     if (!['active', 'inactive', 'suspended'].includes(status)) {
@@ -21,7 +24,7 @@ export async function PATCH(
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!existingUser) {
@@ -33,7 +36,7 @@ export async function PATCH(
 
     // Update user status
     const user = await prisma.user.update({
-      where: { id: params.id },
+      where: { id },
       data: { status },
       select: {
         id: true,
