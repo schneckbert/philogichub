@@ -1,0 +1,107 @@
+# ============================================================================
+# n8n Produktions-Stack für PhilogicAI
+# Lokaler Betrieb, Cloudflare-Exposure, Postgres-Backend
+# ============================================================================
+
+version: '3.8'
+
+networks:
+  n8n-network:
+    driver: bridge
+
+volumes:
+  n8n-data:
+    driver: local
+  pgdata:
+    driver: local
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: n8n-postgres
+    restart: unless-stopped
+    networks:
+      - n8n-network
+    environment:
+      POSTGRES_DB: ${DB_POSTGRESDB_DATABASE:-n8n}
+      POSTGRES_USER: ${DB_POSTGRESDB_USER:-n8n}
+      POSTGRES_PASSWORD: ${DB_POSTGRESDB_PASSWORD:?Database password required}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_POSTGRESDB_USER:-n8n} -d ${DB_POSTGRESDB_DATABASE:-n8n}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "127.0.0.1:5432:5432"  # Nur lokal erreichbar
+
+  # n8n Automation Service
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    networks:
+      - n8n-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # === Database ===
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${DB_POSTGRESDB_DATABASE:-n8n}
+      DB_POSTGRESDB_USER: ${DB_POSTGRESDB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${DB_POSTGRESDB_PASSWORD:?Database password required}
+      DB_POSTGRESDB_SCHEMA: public
+      
+      # === Security ===
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Encryption key required}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:?Basic auth password required}
+      
+      # === Public URLs (Cloudflare) ===
+      N8N_HOST: ${N8N_HOST:-ai.philogichub.com}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      N8N_PATH: /n8n
+      N8N_EDITOR_BASE_URL: https://${N8N_HOST:-ai.philogichub.com}/n8n
+      WEBHOOK_URL: https://${N8N_HOST:-ai.philogichub.com}/n8n
+      N8N_PROXY_HOPS: 1
+      
+      # === Endpoints ===
+      N8N_ENDPOINT_WEBHOOK: webhook
+      N8N_ENDPOINT_WEBHOOK_TEST: webhook-test
+      N8N_ENDPOINT_WEBHOOK_WAIT: webhook-wait
+      
+      # === Hardening ===
+      N8N_PUBLIC_API_DISABLED: ${N8N_PUBLIC_API_DISABLED:-true}
+      N8N_PUBLIC_API_SWAGGERUI_DISABLED: ${N8N_PUBLIC_API_SWAGGERUI_DISABLED:-true}
+      N8N_PAYLOAD_SIZE_MAX: ${N8N_PAYLOAD_SIZE_MAX:-16}  # MB
+      N8N_FORMDATA_FILE_SIZE_MAX: ${N8N_FORMDATA_FILE_SIZE_MAX:-200}  # MB
+      
+      # === Performance ===
+      N8N_METRICS: ${N8N_METRICS:-false}
+      EXECUTIONS_PROCESS: main
+      EXECUTIONS_DATA_PRUNE: true
+      EXECUTIONS_DATA_MAX_AGE: 336  # 14 days
+      
+      # === Timezone ===
+      GENERIC_TIMEZONE: Europe/Berlin
+      TZ: Europe/Berlin
+      
+    ports:
+      - "127.0.0.1:5678:5678"  # Nur lokal, Cloudflare routet Traffic
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

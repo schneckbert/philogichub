@@ -1,0 +1,402 @@
+{
+  "name": "n8n to PhilogicAI Example",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Schedule Daily 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Chat Request\nconst today = new Date().toISOString().split('T')[0];\n\nreturn [{\n  json: {\n    model: 'gpt-4',\n    messages: [\n      {\n        role: 'system',\n        content: 'Du bist ein hilfreicher AI-Assistent für PhilogicHub.'\n      },\n      {\n        role: 'user',\n        content: `Erstelle eine Zusammenfassung der wichtigsten Ereignisse von heute (${today}) aus der Knowledge Base.`\n      }\n    ],\n    stream: false,\n    max_tokens: 1000,\n    temperature: 0.7\n  }\n}];"
+      },
+      "id": "prepare-chat-request",
+      "name": "Prepare Chat Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ai.philogichub.com/api/chat",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 60000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3,
+            "waitBetween": 2000,
+            "useExponentialBackoff": true
+          }
+        }
+      },
+      "id": "call-philogicai-chat",
+      "name": "Call PhilogicAI Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "n8n-bot API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "check-response",
+      "name": "Check Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Summary\nconst response = $input.item.json;\nconst summary = response.choices?.[0]?.message?.content || 'Keine Zusammenfassung verfügbar';\nconst usage = response.usage || {};\n\nreturn [{\n  json: {\n    summary: summary,\n    date: new Date().toISOString(),\n    tokens: {\n      prompt: usage.prompt_tokens || 0,\n      completion: usage.completion_tokens || 0,\n      total: usage.total_tokens || 0\n    },\n    model: response.model || 'unknown'\n  }\n}];"
+      },
+      "id": "extract-summary",
+      "name": "Extract Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ai.philogichub.com/api/knowledge/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "n8n workflows"
+            },
+            {
+              "name": "limit",
+              "value": 5
+            },
+            {
+              "name": "quality_filter",
+              "value": "high,good"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "query-knowledge-base",
+      "name": "Query Knowledge Base",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "n8n-bot API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine Summary with Knowledge\nconst summary = $('Extract Summary').item.json;\nconst knowledgeResponse = $input.item.json;\nconst chunks = knowledgeResponse.chunks || [];\n\nconst relevantDocs = chunks.map(chunk => ({\n  text: chunk.text,\n  score: chunk.score,\n  source: chunk.metadata?.source || 'unknown'\n}));\n\nreturn [{\n  json: {\n    dailySummary: summary.summary,\n    date: summary.date,\n    relevantKnowledge: relevantDocs,\n    tokens: summary.tokens,\n    knowledgeResultCount: relevantDocs.length\n  }\n}];"
+      },
+      "id": "combine-results",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ai.philogichub.com/api/reports",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "store-report",
+      "name": "Store Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "n8n-bot API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Success Log\nconsole.log('Report successfully stored:', $input.item.json);\n\nreturn [{\n  json: {\n    status: 'success',\n    message: 'Daily report created and stored',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle Rate Limit (429)\nconst error = $input.item.json;\n\nconsole.error('Rate limit hit:', error);\n\n// Wait and retry signal\nreturn [{\n  json: {\n    action: 'retry',\n    waitSeconds: 60,\n    error: 'Rate limit exceeded',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "handle-rate-limit",
+      "name": "Handle Rate Limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "id": "wait-retry",
+      "name": "Wait 60s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1250, 400],
+      "webhookId": "retry-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retry Logic\nconst retryCount = $input.item.json.retryCount || 0;\n\nif (retryCount < 3) {\n  console.log(`Retry attempt ${retryCount + 1}/3`);\n  return [{\n    json: {\n      ...$('Prepare Chat Request').item.json,\n      retryCount: retryCount + 1\n    }\n  }];\n} else {\n  console.error('Max retries reached');\n  return [{\n    json: {\n      error: 'Max retries exceeded',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}"
+      },
+      "id": "retry-logic",
+      "name": "Retry Logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Error Notification\nconst error = $input.item.json;\n\nconsole.error('Workflow failed:', error);\n\nreturn [{\n  json: {\n    status: 'failed',\n    error: error.error || 'Unknown error',\n    timestamp: new Date().toISOString(),\n    workflow: 'n8n to PhilogicAI Daily Report'\n  }\n}];"
+      },
+      "id": "error-notification",
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 400]
+    }
+  ],
+  "connections": {
+    "Schedule Daily 9am": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chat Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chat Request": {
+      "main": [
+        [
+          {
+            "node": "Call PhilogicAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call PhilogicAI Chat": {
+      "main": [
+        [
+          {
+            "node": "Check Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Response": {
+      "main": [
+        [
+          {
+            "node": "Extract Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Summary": {
+      "main": [
+        [
+          {
+            "node": "Query Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Results": {
+      "main": [
+        [
+          {
+            "node": "Store Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Report": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Wait 60s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 60s": {
+      "main": [
+        [
+          {
+            "node": "Retry Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Logic": {
+      "main": [
+        [
+          {
+            "node": "Call PhilogicAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "PhilogicAI",
+      "id": "1"
+    },
+    {
+      "name": "Daily Automation",
+      "id": "2"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

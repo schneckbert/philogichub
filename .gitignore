@@ -26,6 +26,13 @@ yarn-error.log*
 # Local env files
 .env
 .env*.local
+.env.production
+.env.development
+
+# Prisma
+prisma/migrations/
+*.db
+*.db-journal
 
 # Vercel
 .vercel
@@ -37,3 +44,9 @@ next-env.d.ts
 # IDE
 .vscode
 .idea
+
+# PhilogicAI
+philogic-ai-server.py.local
+cloudflared-config.yml
+.cloudflared/
+*.bat

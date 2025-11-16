@@ -1,0 +1,356 @@
+{
+  "name": "PhilogicAI to n8n Example",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "philogicai-event",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// HMAC Validation\nconst crypto = require('crypto');\n\nconst HMAC_SECRET = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!HMAC_SECRET) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET nicht gesetzt!');\n}\n\nconst headers = $input.item.json.headers;\nconst signature = headers['x-n8n-signature'];\nconst timestamp = headers['x-n8n-timestamp'];\n\nif (!signature || !timestamp) {\n  return [{\n    json: {\n      error: 'Missing HMAC headers',\n      statusCode: 403\n    }\n  }];\n}\n\n// Timestamp Check (5 min)\nconst now = Math.floor(Date.now() / 1000);\nconst requestTime = parseInt(timestamp, 10);\nif (Math.abs(now - requestTime) > 300) {\n  return [{\n    json: {\n      error: 'Timestamp expired',\n      statusCode: 403\n    }\n  }];\n}\n\n// Signature Verification\nconst rawBody = JSON.stringify($input.item.json.body);\nconst expectedSignature = crypto\n  .createHmac('sha256', HMAC_SECRET)\n  .update(`${timestamp}.${rawBody}`)\n  .digest('hex');\n\nconst givenBuffer = Buffer.from(signature, 'hex');\nconst expectedBuffer = Buffer.from(expectedSignature, 'hex');\n\nconst isValid = givenBuffer.length === expectedBuffer.length &&\n                crypto.timingSafeEqual(givenBuffer, expectedBuffer);\n\nif (!isValid) {\n  return [{\n    json: {\n      error: 'Invalid HMAC signature',\n      statusCode: 403\n    }\n  }];\n}\n\n// Success\nreturn [{\n  json: {\n    validated: true,\n    timestamp: requestTime,\n    event: $input.item.json.body\n  }\n}];"
+      },
+      "id": "hmac-validation",
+      "name": "HMAC Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-validation",
+      "name": "Check Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 403 }}"
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Event Data\nconst event = $input.item.json.event;\n\nreturn [{\n  json: {\n    eventType: event.type,\n    userId: event.user_id,\n    data: event.data,\n    timestamp: event.timestamp,\n    processedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "transform-data",
+      "name": "Transform Event Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://api.example.com/events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "eventType",
+              "value": "={{ $json.eventType }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ $json.data }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3,
+            "waitBetween": 1000
+          }
+        }
+      },
+      "id": "external-api-call",
+      "name": "Call External API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1",
+          "name": "External API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://ai.philogichub.com/api/webhooks/callback",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "eventId",
+              "value": "={{ $('Transform Event Data').item.json.eventType }}"
+            },
+            {
+              "name": "externalResponse",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "processedAt",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "callback-philogicai",
+      "name": "Callback to PhilogicAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "PhilogicAI Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: 'Event processed', eventId: $('Transform Event Data').item.json.eventType } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://ai.philogichub.com/api/webhooks/callback",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "error"
+            },
+            {
+              "name": "eventId",
+              "value": "={{ $('Transform Event Data').item.json.eventType }}"
+            },
+            {
+              "name": "error",
+              "value": "={{ $json.error.message }}"
+            },
+            {
+              "name": "processedAt",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "error-callback",
+      "name": "Error Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 550],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "PhilogicAI Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: 'Processing failed', error: $json.error.message } }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "respond-error-processing",
+      "name": "Respond Error Processing",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 550]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "HMAC Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HMAC Validation": {
+      "main": [
+        [
+          {
+            "node": "Check Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Validation": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transform Event Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Event Data": {
+      "main": [
+        [
+          {
+            "node": "Call External API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call External API": {
+      "main": [
+        [
+          {
+            "node": "Callback to PhilogicAI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback to PhilogicAI": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Callback": {
+      "main": [
+        [
+          {
+            "node": "Respond Error Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

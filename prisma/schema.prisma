@@ -1,0 +1,706 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["baucrm", "public"]
+}
+
+model activity {
+  id                     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_id             String       @db.Uuid
+  contact_id             String?      @db.Uuid
+  user_id                String?      @db.Uuid
+  activity_type          String
+  channel                String?
+  direction              String?
+  activity_datetime      DateTime     @db.Timestamptz(6)
+  duration_minutes       Int?
+  subject                String?
+  notes                  String?
+  related_opportunity_id String?      @db.Uuid
+  outcome                String?
+  next_step              String?
+  next_step_due_date     DateTime?    @db.Date
+  created_at             DateTime     @default(now()) @db.Timestamptz(6)
+  company                company      @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  contact                contact?     @relation(fields: [contact_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  opportunity            opportunity? @relation(fields: [related_opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("baucrm")
+}
+
+model company {
+  id                                                        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name_legal                                                String
+  name_brand                                                String?
+  wz_code                                                   String?
+  trade_segment                                             String?
+  value_chain_role                                          String?
+  size_employee_bucket                                      String?
+  size_revenue_bucket                                       String?
+  hq_location_id                                            String?               @db.Uuid
+  region_cluster                                            String?
+  ownership_type                                            String?
+  status_sales                                              String                @default("prospect")
+  customer_since                                            DateTime?             @db.Date
+  churned_at                                                DateTime?             @db.Date
+  building_focus                                            Json?
+  project_size_typical                                      String?
+  tendering_style                                           String?
+  union_membership                                          String?
+  notes_profile                                             String?
+  fit_score_manual                                          Int?
+  tier                                                      String?
+  created_at                                                DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at                                                DateTime              @default(now()) @db.Timestamptz(6)
+  activity                                                  activity[]
+  company_location_company_hq_location_idTocompany_location company_location?     @relation("company_hq_location_idTocompany_location", fields: [hq_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "company_hq_location_fk")
+  wz_code_company_wz_codeTowz_code                          wz_code?              @relation("company_wz_codeTowz_code", fields: [wz_code], references: [wz_code], onDelete: NoAction, onUpdate: NoAction)
+  company_location_company_location_company_idTocompany     company_location[]    @relation("company_location_company_idTocompany")
+  company_tech_profile                                      company_tech_profile?
+  company_trade                                             company_trade[]
+  contact                                                   contact[]
+  opportunity                                               opportunity[]
+
+  @@schema("baucrm")
+}
+
+model company_location {
+  id                                               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_id                                       String    @db.Uuid
+  name                                             String
+  street                                           String?
+  postal_code                                      String?
+  city                                             String?
+  district                                         String?
+  federal_state                                    String?
+  country                                          String?   @default("DE")
+  latitude                                         Float?
+  longitude                                        Float?
+  location_type                                    String?   @default("niederlassung")
+  phone_main                                       String?
+  email_general                                    String?
+  is_active                                        Boolean   @default(true)
+  created_at                                       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime  @default(now()) @db.Timestamptz(6)
+  company_company_hq_location_idTocompany_location company[] @relation("company_hq_location_idTocompany_location")
+  company_company_location_company_idTocompany     company   @relation("company_location_company_idTocompany", fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  contact                                          contact[]
+
+  @@schema("baucrm")
+}
+
+model company_tech_profile {
+  company_id             String   @id @db.Uuid
+  website_url            String?
+  cms_detected           String?
+  crm_detected           String?
+  erp_detected           String?
+  construction_software  String?
+  saas_adoption_level    String?
+  digital_maturity_score Int?
+  updated_at             DateTime @default(now()) @db.Timestamptz(6)
+  company                company  @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("baucrm")
+}
+
+model company_trade {
+  company_id           String  @db.Uuid
+  trade_id             String  @db.Uuid
+  core_trade           Boolean @default(false)
+  revenue_share_bucket String?
+  company              company @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  trade                trade   @relation(fields: [trade_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([company_id, trade_id])
+  @@schema("baucrm")
+}
+
+model contact {
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_id           String            @db.Uuid
+  location_id          String?           @db.Uuid
+  first_name           String
+  last_name            String
+  job_title            String?
+  role_standardized    String?
+  seniority_level      String?
+  department           String?
+  email_work           String?
+  phone_work           String?
+  linkedin_url         String?
+  opt_in_status        String?           @default("none")
+  opt_in_source        String?
+  language_preference  String?
+  engagement_level     Int?
+  relationship_quality Int?
+  notes_personal       String?
+  created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime          @default(now()) @db.Timestamptz(6)
+  activity             activity[]
+  company              company           @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  company_location     company_location? @relation(fields: [location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  opportunity          opportunity[]
+
+  @@schema("baucrm")
+}
+
+model opportunity {
+  id                     String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_id             String     @db.Uuid
+  primary_contact_id     String?    @db.Uuid
+  created_at             DateTime   @default(now()) @db.Timestamptz(6)
+  source                 String?    @default("other")
+  offer_type             String?
+  project_type           String?
+  estimated_value        Decimal?   @db.Decimal(14, 2)
+  currency               String     @default("EUR")
+  expected_close_date    DateTime?  @db.Date
+  stage                  String     @default("new")
+  probability            Int?
+  won_date               DateTime?  @db.Date
+  lost_date              DateTime?  @db.Date
+  lost_reason            String?
+  lost_reason_detail     String?
+  contract_term_months   Int?
+  product_bundle         Json?
+  prediction_snapshot    Json?
+  feedback_on_prediction String?
+  updated_at             DateTime   @default(now()) @db.Timestamptz(6)
+  activity               activity[]
+  company                company    @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  contact                contact?   @relation(fields: [primary_contact_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("baucrm")
+}
+
+model trade {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  segment         String?
+  parent_trade_id String?         @db.Uuid
+  company_trade   company_trade[]
+  trade           trade?          @relation("tradeTotrade", fields: [parent_trade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_trade     trade[]         @relation("tradeTotrade")
+
+  @@schema("baucrm")
+}
+
+model wz_code {
+  wz_code                          String    @id
+  class                            String    @db.Char(1)
+  description                      String
+  main_segment                     String
+  company_company_wz_codeTowz_code company[] @relation("company_wz_codeTowz_code")
+
+  @@schema("baucrm")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model agent {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String      @unique
+  type        String
+  status      String      @default("idle")
+  description String?
+  config      Json
+  last_run    DateTime?   @db.Timestamptz(6)
+  last_error  String?
+  run_count   Int         @default(0)
+  created_at  DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime    @default(now()) @db.Timestamptz(6)
+  agent_log   agent_log[]
+
+  @@index([status])
+  @@index([type])
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model agent_log {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agent_id   String   @db.Uuid
+  level      String
+  message    String
+  data       Json?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  agent      agent    @relation(fields: [agent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([agent_id])
+  @@index([created_at(sort: Desc)])
+  @@index([level])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model check_runs {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sparkasse_id   String
+  tool_id        String
+  started_at     DateTime     @default(now()) @db.Timestamptz(6)
+  finished_at    DateTime     @db.Timestamptz(6)
+  landing_status status_enum
+  marker_status  status_enum
+  data_status    status_enum
+  contact_status status_enum
+  search_status  status_enum?
+  landing_url    String?
+  data_url       String?
+  contact_url    String?
+  search_url     String?
+  found_prefix   String?
+  overall_status status_enum
+  candidates     Json?
+  http_trace     Json?
+
+  @@index([sparkasse_id, tool_id, finished_at(sort: Desc)], map: "idx_check_runs_sparkasse_tool_time")
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model project {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  status      String    @default("active")
+  priority    String    @default("medium")
+  start_date  DateTime? @db.Date
+  end_date    DateTime? @db.Date
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+  task        task[]
+
+  @@index([status])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model prompts {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category    String
+  title       String
+  description String?
+  prompt_text String
+  goals       String?
+  active      Boolean?  @default(true)
+  sort_order  Int?      @default(0)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([active], map: "idx_prompts_active")
+  @@index([category], map: "idx_prompts_category")
+  @@index([sort_order], map: "idx_prompts_sort_order")
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sparkassen {
+  id               String             @id
+  name             String
+  blz              String?
+  verband          String?
+  ort              String?
+  plz              String?
+  website          String
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_by       String?
+  sparkassen_audit sparkassen_audit[]
+  statuses         statuses[]
+
+  @@index([blz], map: "idx_sparkassen_blz")
+  @@index([name], map: "idx_sparkassen_name")
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sparkassen_audit {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sparkasse_id String
+  changed_at   DateTime   @default(now()) @db.Timestamptz(6)
+  field        String
+  old_value    String?
+  new_value    String?
+  actor        String?
+  sparkassen   sparkassen @relation(fields: [sparkasse_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model statuses {
+  sparkasse_id   String
+  tool_id        String
+  landing_status status_enum
+  marker_status  status_enum
+  data_status    status_enum
+  contact_status status_enum
+  search_status  status_enum?
+  landing_url    String?
+  data_url       String?
+  contact_url    String?
+  search_url     String?
+  found_prefix   String?
+  checked_at     DateTime     @db.Timestamptz(6)
+  overall_status status_enum
+  tool           String
+  results        Json?
+  sparkassen     sparkassen   @relation(fields: [sparkasse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_status_sparkasse")
+
+  @@id([sparkasse_id, tool_id], map: "pk_status")
+  @@unique([sparkasse_id, tool], map: "statuses_sparkasse_tool_key")
+  @@index([overall_status], map: "idx_statuses_overall")
+  @@index([tool_id], map: "idx_statuses_tool")
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model task {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String    @db.Uuid
+  title        String
+  description  String?
+  status       String    @default("todo")
+  priority     String    @default("medium")
+  due_date     DateTime? @db.Date
+  completed_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  project      project   @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([project_id])
+  @@index([status])
+  @@schema("public")
+}
+
+enum status_enum {
+  success
+  failure
+  unknown
+
+  @@schema("public")
+}
+
+// ============================================
+// RBAC & SECURITY MODELS
+// ============================================
+
+/// User model for authentication and authorization
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  name          String?
+  image         String?
+  password      String?   // for credentials provider
+  status        String    @default("active") // "active", "inactive", "suspended"
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  userRoles     UserRole[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
+  
+  academyContents         AcademyContent[]
+  academyContentVersions  AcademyContentVersion[]
+  knowledgeContributions  KnowledgeContribution[]
+  academyReviews          AcademyReview[]
+
+  @@map("users")
+  @@schema("public")
+}
+
+/// NextAuth Account model
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+  @@schema("public")
+}
+
+/// NextAuth Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@schema("public")
+}
+
+/// NextAuth Verification Token model
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+  @@schema("public")
+}
+
+/// Role definition (Superadmin, Admin, Domain Owner, Standard User, etc.)
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system") // true = cannot be deleted
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+  @@schema("public")
+}
+
+/// Permission definition (e.g., "academy:content:approve", "n8n:workflow:execute")
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique // Format: "resource:action:scope"
+  description String?
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+  @@schema("public")
+}
+
+/// Many-to-many join table for Role and Permission
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+  
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+  @@schema("public")
+}
+
+/// Many-to-many join table for User and Role
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+  
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  assignedBy String?  @map("assigned_by") // User ID who assigned this role
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+  @@schema("public")
+}
+
+/// API Keys for external service access (OpenAI, Anthropic, etc.)
+model ApiKey {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  
+  name      String   // User-friendly name
+  provider  String   // "openai", "anthropic", "google", etc.
+  
+  keyEncrypted String @map("key_encrypted") @db.Text // AES-256-GCM encrypted
+  keyHash      String @unique @map("key_hash")       // SHA-256 for lookup
+  keyPreview   String @map("key_preview")            // e.g., "sk-xxx...abcd"
+  
+  // Rate limiting & quotas
+  rateLimitRequestsPerMinute Int   @default(60) @map("rate_limit_requests_per_minute")
+  rateLimitTokensPerDay      Int   @default(100000) @map("rate_limit_tokens_per_day")
+  monthlyCostLimitUsd        Float @default(100.0) @map("monthly_cost_limit_usd")
+  
+  // Usage tracking
+  totalRequests Int   @default(0) @map("total_requests")
+  totalTokens   Int   @default(0) @map("total_tokens")
+  totalCostUsd  Float @default(0) @map("total_cost_usd")
+  
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  apiKeyUsage ApiKeyUsage[]
+
+  @@map("api_keys")
+  @@schema("public")
+}
+
+/// Usage logs for API Keys
+model ApiKeyUsage {
+  id        String   @id @default(cuid())
+  apiKeyId  String   @map("api_key_id")
+  
+  endpoint     String
+  requestCount Int      @default(1) @map("request_count")
+  tokenCount   Int      @default(0) @map("token_count")
+  costUsd      Float    @default(0) @map("cost_usd")
+  
+  timestamp DateTime @default(now())
+  
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, timestamp])
+  @@map("api_key_usage")
+  @@schema("public")
+}
+
+/// Audit log for all critical actions
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?  @map("user_id")
+  
+  action       String   // "user.created", "role.assigned", "academy.approved", etc.
+  resourceType String   @map("resource_type") // "user", "role", "academy_content", etc.
+  resourceId   String?  @map("resource_id")
+  metadata     Json?    // Additional context
+  
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([createdAt])
+  @@map("audit_logs")
+  @@schema("public")
+}
+
+// ============================================
+// PHILOGICAI ACADEMY MODELS
+// ============================================
+
+/// Knowledge contributions from users (before review)
+model KnowledgeContribution {
+  id       String @id @default(cuid())
+  userId   String @map("user_id")
+  
+  source   String // "chat", "manual", "import"
+  rawText  String @map("raw_text") @db.Text
+  category String? // "faq", "process", "product", etc.
+  
+  riskScore Int    @default(1) @map("risk_score") // 1 (low) to 5 (high)
+  status    String @default("pending") // "pending", "approved", "rejected"
+  
+  reviewedBy String?   @map("reviewed_by")
+  reviewedAt DateTime? @map("reviewed_at")
+  reviewComment String? @map("review_comment") @db.Text
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([userId])
+  @@map("knowledge_contributions")
+  @@schema("public")
+}
+
+/// Academy content (published articles, guides, etc.)
+model AcademyContent {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  title          String
+  category       String
+  
+  status         String   @default("draft") // "draft", "pending_review", "published", "archived"
+  currentVersion Int      @default(1) @map("current_version")
+  
+  isProtected Boolean @default(false) @map("is_protected") // Only superadmin can edit
+  
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  creator User @relation(fields: [createdBy], references: [id])
+  
+  versions AcademyContentVersion[]
+  reviews  AcademyReview[]
+
+  @@index([status])
+  @@index([category])
+  @@index([createdBy])
+  @@map("academy_contents")
+  @@schema("public")
+}
+
+/// Version history for Academy content
+model AcademyContentVersion {
+  id        String @id @default(cuid())
+  contentId String @map("content_id")
+  version   Int
+  
+  markdown  String @db.Text
+  embedding Bytes? // Vector embedding (pgvector in production)
+  
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  content AcademyContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  creator User           @relation(fields: [createdBy], references: [id])
+
+  @@unique([contentId, version])
+  @@index([contentId])
+  @@map("academy_content_versions")
+  @@schema("public")
+}
+
+/// Review records for Academy content
+model AcademyReview {
+  id        String @id @default(cuid())
+  contentId String @map("content_id")
+  
+  reviewerId String   @map("reviewer_id")
+  action     String   // "approved", "rejected", "requested_changes"
+  comment    String?  @db.Text
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  content  AcademyContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  reviewer User           @relation(fields: [reviewerId], references: [id])
+
+  @@index([contentId])
+  @@index([reviewerId])
+  @@map("academy_reviews")
+  @@schema("public")
+}

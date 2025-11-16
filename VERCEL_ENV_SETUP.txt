@@ -1,0 +1,15 @@
+DATABASE_URL aus .env:
+postgresql://postgres:AJDSF838edfjafd8sJASDF8fdshdfhs@db.nhxkbqimuserpkjspojh.supabase.co:5432/postgres
+
+NEXTAUTH_SECRET (neu generiert):
+Gehe zu: https://vercel.com/schneckberts-projects/philogichub/settings/environment-variables
+
+Füge hinzu:
+1. DATABASE_URL (production, preview, development)
+   Wert: postgresql://postgres:AJDSF838edfjafd8sJASDF8fdshdfhs@db.nhxkbqimuserpkjspojh.supabase.co:5432/postgres
+
+2. NEXTAUTH_SECRET (production, preview, development)
+   Wert: Generiere mit: openssl rand -base64 32
+   Oder nutze: vercel env add NEXTAUTH_SECRET production
+
+Dann: vercel deploy --prod
